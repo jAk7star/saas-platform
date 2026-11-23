@@ -1,0 +1,63 @@
+name: CI — Polyglot Tests & OpenAPI Drift Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install JS/TS workspace dependencies
+        run: pnpm install --frozen-lockfile --config.strict-dep-builds=false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ai-etl Python dependencies
+        run: pip install -e "services/ai-etl[dev]"
+
+      - name: Setup JDK 25 LTS
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "25"
+
+      - name: Grant execute permission for Gradle wrapper
+        run: chmod +x services/core-jvm/gradlew
+
+      - name: Export OpenAPI specifications
+        run: pnpm nx run-many --target=export-openapi --all
+
+      - name: Generate TypeScript SDKs
+        run: pnpm nx run-many --target=generate-client --all
+
+      - name: Check for OpenAPI / SDK drift
+        run: git diff --exit-code packages/api-ai packages/api-core
+
+      - name: Typecheck workspace
+        run: pnpm typecheck
+
+      - name: Run unit and integration tests
+        run: pnpm nx run-many --target=test --all
+
+      - name: Run Security & LGPD Audit
+        run: pnpm audit:security
+
+      - name: Build Web Application (Standalone)
+        run: pnpm --filter @saas/web build

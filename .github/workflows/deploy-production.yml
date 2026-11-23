@@ -1,0 +1,134 @@
+name: Production CD — Neon Migrations, Railway Backends & Vercel Web
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  validate-and-migrate:
+    name: 1. Validate & Migrate Neon DB
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 & Corepack
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install Workspace Dependencies
+        run: pnpm install --frozen-lockfile --config.strict-dep-builds=false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ai-etl Dependencies
+        run: pip install -e "services/ai-etl[dev]"
+
+      - name: Setup JDK 25 LTS
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "25"
+
+      - name: Run Security & LGPD Audit
+        run: pnpm audit:security
+
+      - name: Check Contract Drift
+        run: |
+          pnpm nx run-many --target=export-openapi --all
+          pnpm nx run-many --target=generate-client --all
+          git diff --exit-code packages/
+
+      - name: Run Monorepo Unit Tests
+        run: pnpm nx run-many --target=test --all
+
+      - name: Apply Migrations on Neon Database
+        if: env.DATABASE_URL != ''
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+        run: |
+          echo "Aplicando schema 'auth' no Neon via Drizzle..."
+          pnpm --filter @saas/db-schema db:push
+          
+          echo "Aplicando schema 'ai' no Neon via Alembic..."
+          cd services/ai-etl && alembic upgrade head && cd ../..
+
+  deploy-railway:
+    name: 2. Deploy Backends on Railway
+    needs: validate-and-migrate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm install -g @railway/cli
+
+      - name: Deploy FastAPI (ai-etl)
+        if: env.RAILWAY_TOKEN != ''
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service ai-etl --detach
+
+      - name: Deploy Ktor (core-jvm)
+        if: env.RAILWAY_TOKEN != ''
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          railway up --service core-jvm --detach
+
+  deploy-vercel:
+    name: 3. Deploy Frontend on Vercel
+    needs: deploy-railway
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22 & Corepack
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm)
+        run: corepack enable
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile --config.strict-dep-builds=false
+
+      - name: Deploy to Vercel Production
+        if: env.VERCEL_TOKEN != ''
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: "--prod"
+          working-directory: ./
+
+  smoke-test:
+    name: 4. Production Smoke Test
+    needs: deploy-vercel
+    runs-on: ubuntu-latest
+    steps:
+      - name: Healthcheck Live Endpoints
+        if: env.PROD_WEB_URL != ''
+        env:
+          PROD_WEB_URL: ${{ secrets.PROD_WEB_URL }}
+        run: |
+          echo "Verificando disponibilidade da aplicação de produção..."
+          curl -f -s -o /dev/null "$PROD_WEB_URL" || exit 1
+          echo "Produção online e respondendo com sucesso!"

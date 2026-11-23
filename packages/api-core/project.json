@@ -1,0 +1,24 @@
+{
+  "name": "api-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "packages/api-core/src",
+  "projectType": "library",
+  "targets": {
+    "generate-client": {
+      "dependsOn": ["core-jvm:export-openapi"],
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "openapi-ts",
+        "cwd": "packages/api-core"
+      },
+      "outputs": ["{projectRoot}/src/generated"]
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit",
+        "cwd": "packages/api-core"
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "saas-platform",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev:db": "docker compose up -d postgres",
+    "dev:web": "pnpm nx dev web",
+    "export-openapi": "pnpm nx run-many --target=export-openapi --all",
+    "generate-client": "pnpm nx run-many --target=generate-client --all",
+    "typecheck": "pnpm nx run-many --target=typecheck --all",
+    "lint": "pnpm nx run-many --target=lint --all",
+    "test": "pnpm nx run-many --target=test --all",
+    "test:e2e": "pnpm nx run-many --target=e2e --all",
+    "audit:security": "node scripts/audit-security-lgpd.mjs",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "0.99.0",
+    "@nx/js": "^20.0.0",
+    "nx": "^20.0.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

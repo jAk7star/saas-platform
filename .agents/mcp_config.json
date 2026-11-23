@@ -1,0 +1,33 @@
+{
+  "mcpServers": {
+    "context7": {
+      "$typeName": "McpServer",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "timeoutSeconds": 30
+    },
+    "chrome-devtools": {
+      "$typeName": "McpServer",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"],
+      "timeoutSeconds": 60,
+      "disabledTools": [
+        "emulate",
+        "resize_page",
+        "upload_file",
+        "drag"
+      ]
+    },
+    "postgres-readonly": {
+      "$typeName": "McpServer",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@localhost:5432/saas_db"
+      ],
+      "timeoutSeconds": 30,
+      "disabledTools": []
+    }
+  }
+}

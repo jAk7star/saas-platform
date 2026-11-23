@@ -1,0 +1,85 @@
+name: Neon Database Preview Branching & Ephemeral Environments
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+
+jobs:
+  manage-preview-branch:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # --- Teardown on PR close ---
+      - name: Delete Neon Preview Branch on PR Close
+        if: github.event.action == 'closed'
+        uses: neondatabase/delete-branch-action@v5
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch: pr-${{ github.event.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      # --- Provisioning on PR open/update ---
+      - name: Create Neon Preview Branch
+        if: github.event.action != 'closed'
+        id: create-branch
+        uses: neondatabase/create-branch-action@v5
+        with:
+          project_id: ${{ secrets.NEON_PROJECT_ID }}
+          branch_name: pr-${{ github.event.number }}
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Setup Node.js 22 & Corepack
+        if: github.event.action != 'closed'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (pnpm)
+        if: github.event.action != 'closed'
+        run: corepack enable
+
+      - name: Install Workspace Dependencies
+        if: github.event.action != 'closed'
+        run: pnpm install --frozen-lockfile --config.strict-dep-builds=false
+
+      - name: Setup Python 3.12
+        if: github.event.action != 'closed'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ai-etl Dependencies
+        if: github.event.action != 'closed'
+        run: pip install -e "services/ai-etl[dev]"
+
+      - name: Apply Migrations to Neon Preview Branch
+        if: github.event.action != 'closed'
+        env:
+          DATABASE_URL: ${{ steps.create-branch.outputs.db_url_with_pooler }}
+        run: |
+          echo "Aplicando schema 'auth' via Drizzle..."
+          pnpm --filter @saas/db-schema db:push
+          
+          echo "Aplicando schema 'ai' via Alembic..."
+          cd services/ai-etl && alembic upgrade head && cd ../..
+
+      - name: Post Preview Details on PR
+        if: github.event.action != 'closed'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branchName = `pr-${context.issue.number}`;
+            const body = `### 🚀 Neon Preview Environment Ativo\n\n- **Database Branch:** \`${branchName}\`\n- **Status:** Schemas \`auth\`, \`core\` e \`ai\` provisionados com RLS ativo.\n- **Vercel Preview URL:** Integrada via Vercel GitHub App.\n- **Teardown Automático:** A branch do banco será destruída assim que este PR for fechado.`;
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });

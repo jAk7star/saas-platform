@@ -1,0 +1,37 @@
+{
+  "name": "ai-etl",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "services/ai-etl/src",
+  "projectType": "application",
+  "targets": {
+    "export-openapi": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "python scripts/export_openapi.py",
+        "cwd": "services/ai-etl"
+      },
+      "outputs": ["{projectRoot}/dist/openapi-ai.json"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pytest",
+        "cwd": "services/ai-etl"
+      }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "ruff check src tests scripts",
+        "cwd": "services/ai-etl"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "mypy src",
+        "cwd": "services/ai-etl"
+      }
+    }
+  }
+}
